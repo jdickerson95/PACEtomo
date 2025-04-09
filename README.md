@@ -204,11 +204,12 @@ PACEtomo runs a grouped dose-symmetric tilt scheme. Before starting the PACEtomo
 | `minDefocus` | `-5` | Minimum target defocus [µm] of a defocus range that is incremented between targets. |
 | `maxDefocus` | `-5` | Maximum target defocus [µm] of a defocus range that is incremented between targets. If you want to use the same target defocus, keep `minDefocus` and `maxDefocus` the same. |
 | `stepDefocus` | `0.5` | Defocus increment [µm] between targets. |
-| `focusSlope` | `0` | If your tilt axis offset is not appropriately set, there will be a pseudo-linear defocus slope throughout your tilt series. You can run PACEtomo on a carbon film, estimate the defocus by CTF fitting and plot the change in [µm per degree]. Set this value as `focusSlope` to compensate in subsequent acquisitions. Alternatively, refine the tilt axis offset to minimize the slope. When using SerialEM’s fine eucentricity routine to obtain a tilt axis offset, a significant focus slope remains. You can use the [*PACEtomo_measureOffset.py*](#pacetomo_measureoffsetpy) script to get a PACEtomo optimized estimate for the tilt axis offset. |
+| `focusSlope` | `0` | If your tilt axis offset is not appropriately set, there will be a pseudo-linear defocus slope throughout your tilt series. You can run PACEtomo on a carbon film, estimate the defocus by CTF fitting and plot the change in [µm per degree]. Set this value as `focusSlope` to compensate in subsequent acquisitions. Alternatively, refine the tilt axis offset to minimize the slope. When using SerialEM's fine eucentricity routine to obtain a tilt axis offset, a significant focus slope remains. You can use the [*PACEtomo_measureOffset.py*](#pacetomo_measureoffsetpy) script to get a PACEtomo optimized estimate for the tilt axis offset. |
 | `delayIS` | `0.1` | Delay [s] between applying beam-image shift and acquiring an image. Some microscopes require some settling time for the beam to stabilize. |
 | `delayTilt` | `0.1` | Delay [s] after tilting the stage for drift settling. |
 | `zeroExposure` | `0` | Custom exposure time [s] for the first tilt image. This can be useful for hybrid processing approaches. When set to `0` the same exposure time will be used for all tilt angles. |
-| `zeroDefocus` | `0` | Custom target defocus for the first tilt image. When set to `0` the same target defocus will be used for all tilt angles. |
+| `minZeroDefocus` | `0` | Minimum target defocus [µm] for the first tilt image. When set to `0` the same defocus range will be used for all tilt angles. Works with `maxZeroDefocus` to create a defocus range. |
+| `maxZeroDefocus` | `0` | Maximum target defocus [µm] for the first tilt image. When set to `0` the same defocus range will be used for all tilt angles. Works with `minZeroDefocus` to create a defocus range. |
 
 #### Track settings:
 | Setting | Default | Description |
@@ -279,6 +280,7 @@ PACEtomo runs a grouped dose-symmetric tilt scheme. Before starting the PACEtomo
 | `noZeroRecAli` | `False` | If `True`, will use the saved reference during `previewAli` but ignore it for the first Record image. The tilt series will thus be centered on wherever the first Record image was taken rather than trying to target the saved Preview reference. |
 | `autoStartTilt` | `False` | If `True`, will use measured `pretilt` to set compensating `startTilt` and adjust tilt range accordingly. |
 | `tiltTargets` | `0` | Stage tilt [degrees] at which targets were selected (if not `0`, it will be automatically used as `startTilt`). |
+| `tygress` | `False` | If `True`, takes two images at the start tilt: the first with `zeroExpTime` and `minZeroDefocus`/`maxZeroDefocus` parameters applied, and the second with standard parameters. This is used for hybrid tilt series approaches like TYGRESS that require different imaging conditions for the same tilt angle. Detailed logging shows the parameters used for each image. |
 
 #### Target montage settings (experimental):
 | Setting | Default | Description |
@@ -351,6 +353,27 @@ A selection of video tutorials was uploaded to Youtube. These were recorded usin
 If you could not resolve the issue yourself or you encountered a bug, please report it to the [GitHub Issues](https://github.com/eisfabian/PACEtomo/issues) page or send an email to [spacetomo.help@gmail.com](mailto:spacetomo.help@gmail.com).
 
 ## Recent changes
+
+### 18.06.2025
+#### v1.9.4
+Enhanced tygress mode with improved logging and defocus range.
+<details>
+<summary>Changes</summary>
+
+- Added detailed logging when using tygress mode to clearly show what parameters are being used for each image
+- Replaced single `zeroDefocus` parameter with `minZeroDefocus` and `maxZeroDefocus` to allow for defocus range in tygress mode
+- Fixed calculation of defocus values for targets based on their position in the target list
+</details>
+
+### 12.06.2025
+#### v1.9.3
+Added tygress option for hybrid tilt series acquisitions.
+<details>
+<summary>Changes</summary>
+
+- Added tygress advanced option which takes two images at start tilt: the first with special parameters and the second with standard parameters
+- This enables hybrid tilt series approaches like TYGRESS that require different imaging conditions for the same tilt angle
+</details>
 
 ### 18.03.2025
 #### v1.9.2

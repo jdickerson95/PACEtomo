@@ -6,8 +6,8 @@
 #               More information at http://github.com/eisfabian/PACEtomo
 # Author:       Fabian Eisenstein
 # Created:      2021/04/16
-# Revision:     v1.9.2b
-# Last Change:  2025/04/04: forced frame names to contain tilt angle
+# Revision:     v1.9.4b
+# Last Change:  2025/06/18: enhanced tygress mode with improved logging and defocus range
 # ===================================================================
 
 ############ SETTINGS ############ 
@@ -25,7 +25,8 @@ focusSlope      = 0.0       # [DEPRECATED] empirical linear focus correction [mi
 delayIS         = 0.3       # delay [s] between applying image shift and Record
 delayTilt       = 0.3       # delay [s] after stage tilt
 zeroExpTime     = 0         # set to exposure time [s] used for start tilt image, if 0: use same exposure time for all tilt images
-zeroDefocus	    = 0 		# set to defocus [microns] used for start tilt image, if 0: use same defocus for all tilt images
+minZeroDefocus  = 0         # set to minimum defocus [microns] used for start tilt image, if 0: uses minDefocus
+maxZeroDefocus  = 0         # set to maximum defocus [microns] used for start tilt image, if 0: uses maxDefocus
 
 # Track settings
 trackExpTime    = 0         # set to exposure time [s] used for tracking tilt series, if 0: use same exposure time for all tilt series
@@ -81,6 +82,7 @@ refFromPreview  = False     # Makes temporary reference from Preview image colle
 noZeroRecAli    = False     # Skip alignment of first tilt image to reference 
 autoStartTilt   = False     # Uses measured pretilt to set compensating startTilt      
 tiltTargets     = 0         # Stage tilt at which targets were selected (if not 0, it will be automatically used as startTilt!)
+tygress         = False     # If True, takes an additional image at start tilt after applying zeroExpTime and zeroDefocus
 
 # Target montage settings
 tgtMontage      = False     # collect montage for each target using the shorter camera dimension (e.g. for square aperture montage tomography)
@@ -95,7 +97,7 @@ breakpoints     = False     # Waits at every debug output for user to press B ke
 
 ########## END SETTINGS ########## 
 
-versionPACE = "1.9.2b"
+versionPACE = "1.9.4b"
 
 import serialem as sem
 import os
@@ -567,7 +569,13 @@ def Tilt(tilt):
             sem.SetDefocus(position[0][pn]["focus"] + trackDefocus - targetDefocus)
         if trackExpTime > 0:
             if tilt == startTilt:
-                sem.SetExposure("R", max(trackExpTime, zeroExpTime))
+                # When using tygress, handle exposure time differently
+                if tygress and zeroExpTime > 0:
+                    # For the first image with tygress, will use zeroExpTime
+                    # For the second image, trackExpTime will be set after the first image
+                    sem.SetExposure("R", zeroExpTime)
+                else:
+                    sem.SetExposure("R", max(trackExpTime, zeroExpTime))
             else:
                 sem.SetExposure("R", trackExpTime)
         if trackMag > 0:
@@ -697,9 +705,35 @@ def Tilt(tilt):
         position[pos][pn]["focus"] -= focuschange
 
         sem.SetDefocus(position[pos][pn]["focus"])
-        if zeroDefocus != 0 and tilt == startTilt:
-            sem.ChangeFocus(zeroDefocus - maxDefocus)
-
+        
+        # Apply zero defocus if at start tilt and parameters are set
+        useZeroDefocus = False
+        zeroDefocusVal = 0
+        if tilt == startTilt:
+            # Calculate target defocus for this position based on its position in the range
+            if pos == 0 and trackDefocus != 0:
+                targetDefocusForPos = trackDefocus
+            else:
+                # Calculate the defocus step for this target based on its position among all targets
+                defocusStepForPos = 0
+                if minDefocus != maxDefocus and len(position) > 1:
+                    defocusStepForPos = (maxDefocus - minDefocus) / (len(position) - 1) * pos
+                targetDefocusForPos = minDefocus + defocusStepForPos
+                
+            # Check if we should use zero defocus parameters
+            if minZeroDefocus != 0 or maxZeroDefocus != 0:
+                useZeroDefocus = True
+                # If only one value is set, use the same value for both
+                actualMinZeroDefocus = minZeroDefocus if minZeroDefocus != 0 else maxZeroDefocus
+                actualMaxZeroDefocus = maxZeroDefocus if maxZeroDefocus != 0 else minZeroDefocus
+                
+                # Calculate the zero defocus step for this target based on its position
+                zeroDefocusStepForPos = 0
+                if actualMinZeroDefocus != actualMaxZeroDefocus and len(position) > 1:
+                    zeroDefocusStepForPos = (actualMaxZeroDefocus - actualMinZeroDefocus) / (len(position) - 1) * pos
+                zeroDefocusVal = actualMinZeroDefocus + zeroDefocusStepForPos
+                sem.ChangeFocus(zeroDefocusVal - targetDefocusForPos)
+        
         sem.SetImageShift(position[pos][pn]["ISXset"], position[pos][pn]["ISYset"])
         sem.ImageShiftByMicrons(0, SSchange)
 
@@ -731,12 +765,56 @@ def Tilt(tilt):
         if beamTiltComp: 
             sem.AdjustBeamTiltforIS()
         sem.Delay(delayIS, "s")
+
+        # Handle the special start tilt case with tygress option
+        tygressSecondImage = False
+        if tilt == startTilt and tygress and (zeroExpTime > 0 or useZeroDefocus):
+            # First take image with zero parameters
+            if zeroExpTime > 0:
+                sem.SetExposure("R", zeroExpTime)
+                log(f"Tygress mode: Taking first image at start tilt with exposure time {zeroExpTime}s", color=4, style=1)
+            if useZeroDefocus:
+                log(f"Tygress mode: Taking first image at start tilt with defocus {zeroDefocusVal}µm", color=4, style=1)
+            
+            sem.R()
+            sem.S()
+            
+            # Reset to normal parameters for second image
+            if zeroExpTime > 0:
+                sem.RestoreCameraSet("R")
+                # Apply trackExpTime for tracking target if needed
+                if pos == 0 and trackExpTime > 0:
+                    sem.SetExposure("R", trackExpTime)
+                    log(f"Tygress mode: Taking second image with track exposure time {trackExpTime}s", color=4, style=1)
+                else:
+                    expTime, *_ = sem.ReportExposure("R")
+                    log(f"Tygress mode: Taking second image with standard exposure time {expTime}s", color=4, style=1)
+            if useZeroDefocus:
+                # Reset defocus to normal value for this position
+                if pos == 0 and trackDefocus != 0:
+                    targetDefocusForPos = trackDefocus
+                    log(f"Tygress mode: Taking second image with track defocus {trackDefocus}µm", color=4, style=1)
+                else:
+                    defocusStepForPos = 0
+                    if minDefocus != maxDefocus and len(position) > 1:
+                        defocusStepForPos = (maxDefocus - minDefocus) / (len(position) - 1) * pos
+                    targetDefocusForPos = minDefocus + defocusStepForPos
+                    log(f"Tygress mode: Taking second image with standard defocus {targetDefocusForPos}µm", color=4, style=1)
+                
+                sem.ChangeFocus(targetDefocusForPos - zeroDefocusVal)
+            
+            tygressSecondImage = True
+        else:
+            # Apply normal zero parameters if not in tygress mode
+            if zeroExpTime > 0 and tilt == startTilt:
+                sem.SetExposure("R", zeroExpTime)
+                
         sem.R()
         sem.S()
 
         bufISXpre = 0                                                                           # only non 0 if two tracking images are taken
         bufISYpre = 0
-        if tilt != startTilt or (not tgtPattern and "tgtfile" in targets[pos].keys() and not noZeroRecAli): # align to previous image if it exists 
+        if (tilt != startTilt or tygressSecondImage or (not tgtPattern and "tgtfile" in targets[pos].keys() and not noZeroRecAli)): # align to previous image if it exists 
             if pos != 0: 
                 sem.LimitNextAutoAlign(alignLimit)                                              # gives maximum distance for AlignTo to avoid runaway tracking
             alignTo("O", debug)
@@ -946,7 +1024,8 @@ def Tilt(tilt):
     if tgtPattern and slitInterval > 0 and (lastSlitCheck - sem.ReportClock() / 60) > slitInterval:
         checkSlit(np.array([vecB0, vecB1]), size, realTilt, pn)
 
-    if zeroExpTime > 0 and tilt == startTilt:
+    # Reset exposure time if needed
+    if zeroExpTime > 0 and tilt == startTilt and not tygress:
         sem.RestoreCameraSet("R")
 
     if recover:
