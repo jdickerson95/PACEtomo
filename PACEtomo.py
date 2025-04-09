@@ -6,8 +6,8 @@
 #               More information at http://github.com/eisfabian/PACEtomo
 # Author:       Fabian Eisenstein
 # Created:      2021/04/16
-# Revision:     v1.9.5b
-# Last Change:  2025/06/29: added zeroMag option for hybrid tilt series acquisitions
+# Revision:     v1.9.3b
+# Last Change:  2025/04/08: added zeroMag option for hybrid tilt series acquisitions
 # ===================================================================
 
 ############ SETTINGS ############ 
