@@ -6,8 +6,8 @@
 #               More information at http://github.com/eisfabian/PACEtomo
 # Author:       Fabian Eisenstein
 # Created:      2021/04/16
-# Revision:     v1.9.4b
-# Last Change:  2025/06/18: enhanced tygress mode with improved logging and defocus range
+# Revision:     v1.9.5b
+# Last Change:  2025/06/29: added zeroMag option for hybrid tilt series acquisitions
 # ===================================================================
 
 ############ SETTINGS ############ 
@@ -27,6 +27,7 @@ delayTilt       = 0.3       # delay [s] after stage tilt
 zeroExpTime     = 0         # set to exposure time [s] used for start tilt image, if 0: use same exposure time for all tilt images
 minZeroDefocus  = 0         # set to minimum defocus [microns] used for start tilt image, if 0: uses minDefocus
 maxZeroDefocus  = 0         # set to maximum defocus [microns] used for start tilt image, if 0: uses maxDefocus
+zeroMag         = 0         # set to nominal magnification for start tilt image, if 0: use same magnification for all tilt images
 
 # Track settings
 trackExpTime    = 0         # set to exposure time [s] used for tracking tilt series, if 0: use same exposure time for all tilt series
@@ -97,7 +98,7 @@ breakpoints     = False     # Waits at every debug output for user to press B ke
 
 ########## END SETTINGS ########## 
 
-versionPACE = "1.9.4b"
+versionPACE = "1.9.3b"
 
 import serialem as sem
 import os
@@ -603,7 +604,8 @@ def Tilt(tilt):
                 sem.SetMag(origMag)
                 sem.GoToLowDoseArea("R")
 
-    global recover
+    global recover, origZeroMag
+    origZeroMag = 0
 
     # Tilt if within tilt range, skip branch if not
     if -tiltLimit <= tilt <= tiltLimit:
@@ -768,7 +770,22 @@ def Tilt(tilt):
 
         # Handle the special start tilt case with tygress option
         tygressSecondImage = False
-        if tilt == startTilt and tygress and (zeroExpTime > 0 or useZeroDefocus):
+        if tilt == startTilt and tygress and (zeroExpTime > 0 or useZeroDefocus or zeroMag > 0):
+            origMag = 0
+            # Apply special magnification for first image if needed
+            if zeroMag > 0:
+                origMag, *_ = sem.ReportMag()
+                attempt = 0
+                while sem.ReportMag()[0] == origMag:                                            # has to be checked, because Rec is sometimes not updated (JEOL)
+                    if attempt >= 10:
+                        log("WARNING: Magnification could not be changed. Continuing with the same magnification.")
+                        zeroMag = 0
+                        break
+                    sem.SetMag(zeroMag)
+                    sem.GoToLowDoseArea("R")
+                    attempt += 1
+                log(f"Tygress mode: Taking first image at start tilt with magnification {zeroMag}", color=4, style=1)
+                
             # First take image with zero parameters
             if zeroExpTime > 0:
                 sem.SetExposure("R", zeroExpTime)
@@ -789,6 +806,20 @@ def Tilt(tilt):
                 else:
                     expTime, *_ = sem.ReportExposure("R")
                     log(f"Tygress mode: Taking second image with standard exposure time {expTime}s", color=4, style=1)
+            
+            # Reset magnification if it was changed
+            if zeroMag > 0:
+                attempt = 0
+                currentMag = sem.ReportMag()[0]
+                while currentMag != origMag:                                                    # has to be checked, because Rec is sometimes not updated (JEOL)
+                    if attempt >= 10:
+                        log("WARNING: Could not reset magnification. Continuing with current magnification.")
+                        break
+                    sem.SetMag(origMag)
+                    sem.GoToLowDoseArea("R")
+                    attempt += 1
+                log(f"Tygress mode: Taking second image with standard magnification {origMag}", color=4, style=1)
+                
             if useZeroDefocus:
                 # Reset defocus to normal value for this position
                 if pos == 0 and trackDefocus != 0:
@@ -808,6 +839,20 @@ def Tilt(tilt):
             # Apply normal zero parameters if not in tygress mode
             if zeroExpTime > 0 and tilt == startTilt:
                 sem.SetExposure("R", zeroExpTime)
+            
+            # Apply zeroMag if not in tygress mode
+            if zeroMag > 0 and tilt == startTilt:
+                origZeroMag, *_ = sem.ReportMag()
+                attempt = 0
+                while sem.ReportMag()[0] == origZeroMag:                                        # has to be checked, because Rec is sometimes not updated (JEOL)
+                    if attempt >= 10:
+                        log("WARNING: Magnification could not be changed. Continuing with the same magnification.")
+                        zeroMag = 0
+                        break
+                    sem.SetMag(zeroMag)
+                    sem.GoToLowDoseArea("R")
+                    attempt += 1
+                log(f"Taking start tilt image with magnification {zeroMag}", color=4, style=1)
                 
         sem.R()
         sem.S()
@@ -1027,9 +1072,23 @@ def Tilt(tilt):
     # Reset exposure time if needed
     if zeroExpTime > 0 and tilt == startTilt and not tygress:
         sem.RestoreCameraSet("R")
+        
+    # Reset magnification if needed
+    if zeroMag > 0 and tilt == startTilt and not tygress:
+        attempt = 0
+        currentMag = sem.ReportMag()[0]
+        while currentMag != origZeroMag:                                                     # has to be checked, because Rec is sometimes not updated (JEOL)
+            if attempt >= 10:
+                log("WARNING: Could not reset magnification. Continuing with current magnification.")
+                break
+            sem.SetMag(origZeroMag)
+            sem.GoToLowDoseArea("R")
+            attempt += 1
+            currentMag = sem.ReportMag()[0]
+        log(f"Reset magnification to standard {origZeroMag}", color=4, style=1)
 
     if recover:
-        recover = False    
+        recover = False
 
 def dumpVars(filename):
     output = "# PACEtomo settings from " + datetime.now().strftime("%d.%m.%Y %H:%M:%S") + "\n"

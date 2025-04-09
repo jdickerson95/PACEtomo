@@ -210,6 +210,7 @@ PACEtomo runs a grouped dose-symmetric tilt scheme. Before starting the PACEtomo
 | `zeroExposure` | `0` | Custom exposure time [s] for the first tilt image. This can be useful for hybrid processing approaches. When set to `0` the same exposure time will be used for all tilt angles. |
 | `minZeroDefocus` | `0` | Minimum target defocus [µm] for the first tilt image. When set to `0` the same defocus range will be used for all tilt angles. Works with `maxZeroDefocus` to create a defocus range. |
 | `maxZeroDefocus` | `0` | Maximum target defocus [µm] for the first tilt image. When set to `0` the same defocus range will be used for all tilt angles. Works with `minZeroDefocus` to create a defocus range. |
+| `zeroMag` | `0` | Custom magnification for the first tilt image. When set to `0` the same magnification will be used for all tilt angles. Use with `tygress` mode for hybrid tilt series acquisitions. Includes robust error handling for JEOL microscopes. |
 
 #### Track settings:
 | Setting | Default | Description |
@@ -354,25 +355,15 @@ If you could not resolve the issue yourself or you encountered a bug, please rep
 
 ## Recent changes
 
-### 18.06.2025
-#### v1.9.4
-Enhanced tygress mode with improved logging and defocus range.
-<details>
-<summary>Changes</summary>
-
-- Added detailed logging when using tygress mode to clearly show what parameters are being used for each image
-- Replaced single `zeroDefocus` parameter with `minZeroDefocus` and `maxZeroDefocus` to allow for defocus range in tygress mode
-- Fixed calculation of defocus values for targets based on their position in the target list
-</details>
-
-### 12.06.2025
+### 08.04.2025
 #### v1.9.3
 Added tygress option for hybrid tilt series acquisitions.
 <details>
 <summary>Changes</summary>
 
 - Added tygress advanced option which takes two images at start tilt: the first with special parameters and the second with standard parameters
-- This enables hybrid tilt series approaches like TYGRESS that require different imaging conditions for the same tilt angle
+- Replaced single `zeroDefocus` parameter with `minZeroDefocus` and `maxZeroDefocus` to allow for defocus range in tygress mode
+- Added `zeroMag` parameter for different magnification for the first tilt image
 </details>
 
 ### 18.03.2025
